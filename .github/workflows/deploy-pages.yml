@@ -1,0 +1,65 @@
+name: Deploy standalone EmulatorJS GBA site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build self-contained EmulatorJS assets
+        run: |
+          set -euo pipefail
+          mkdir -p _site/data/cores
+
+          cp index.html _site/index.html
+
+          BASE="https://cdn.emulatorjs.org/latest/data"
+
+          curl -fL "$BASE/loader.js" -o _site/data/loader.js
+          curl -fL "$BASE/emulator.min.js" -o _site/data/emulator.min.js
+          curl -fL "$BASE/emulator.min.css" -o _site/data/emulator.min.css
+          curl -fL "$BASE/version.json" -o _site/data/version.json
+
+          # GBA uses the mGBA core. Only this core is included.
+          curl -fL "$BASE/cores/mgba-wasm.data" -o _site/data/cores/mgba-wasm.data
+
+          # The emulator expects the core metadata directory to exist.
+          mkdir -p _site/data/cores/reports
+          curl -fL "$BASE/cores/reports/mgba.json" -o _site/data/cores/reports/mgba.json
+
+          # Prevent GitHub Pages/Jekyll from altering emulator assets.
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
